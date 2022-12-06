@@ -1,2 +1,11 @@
-# PogLib
-Just a grpc library using Rust 
+# gRPC example in Rust
+
+Run gRPC server
+```
+cargo run --bin payments-server
+```
+
+Run gRPC client
+```
+cargo run --bin payments-client
+```

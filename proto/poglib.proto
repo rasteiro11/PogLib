@@ -1,0 +1,21 @@
+syntax = "proto3";
+package poglib;
+
+service PogLib {
+    rpc AddBook(AddBookRequest) returns (AddBookResponse);
+}
+
+enum Status {
+  UNKNOWN_STATUS = 0;
+  OK = 1;
+  ERROR = 2;
+}
+
+message AddBookRequest {
+  string name = 1;
+}
+
+message  AddBookResponse {
+    Status status = 1;
+    string message = 2;
+}
