@@ -1,7 +1,7 @@
 use crate::schema::books;
 use diesel::prelude::*;
 
-#[derive(Queryable)]
+#[derive(Queryable, Debug)]
 pub struct Book {
     pub id: i32,
     pub name: String,

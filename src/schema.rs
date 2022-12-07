@@ -2,7 +2,7 @@
 
 diesel::table! {
     books (id) {
-        id -> Bigint,
+        id -> Integer,
         name -> Varchar,
     }
 }
