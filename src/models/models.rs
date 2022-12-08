@@ -1,14 +1,20 @@
 use crate::schema::books;
 use diesel::prelude::*;
 
-#[derive(Queryable, Debug)]
+#[derive(
+    PartialEq,
+    Eq,
+    Debug,
+    Clone,
+    Queryable,
+    Identifiable,
+    Insertable,
+    AsChangeset,
+    QueryableByName,
+    Selectable,
+)]
+#[diesel(table_name = books)]
 pub struct Book {
     pub id: i32,
     pub name: String,
-}
-
-#[derive(Insertable)]
-#[diesel(table_name = books)]
-pub struct NewBook<'a> {
-    pub name: &'a str,
 }
