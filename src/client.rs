@@ -5,7 +5,8 @@ pub mod payments {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = PogLibClient::connect("http://[::1]:42069").await?;
+    let addr = "http://0.0.0.0:42069";
+    let mut client = PogLibClient::connect(addr).await?;
 
     let request = tonic::Request::new(AddBookRequest {
         name: "VERY COOL BOOK".into(),
