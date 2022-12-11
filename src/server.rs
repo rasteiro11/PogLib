@@ -29,15 +29,30 @@ impl PogLib for PogLibService {
     ) -> Result<Response<AddBookResponse>, tonic::Status> {
         let conn: &mut MysqlConnection = &mut connection();
 
-        let bs = sql_query("INSERT INTO books (name) VALUES (?)")
+        let rows_affected = sql_query("INSERT INTO books (name) VALUES (?)")
             .bind::<Text, _>(&request.get_ref().name)
-            .execute(conn)
-            .unwrap();
+            .execute(conn);
 
-        let added_book = sql_query("SELECT * FROM books ORDER BY id DESC")
-            .load::<Book>(conn)
-            .unwrap();
+        if let Err(err) = rows_affected {
+            let reply = AddBookResponse {
+                status: Status::Error.into(),
+                message: format!("Add book failed with error: {}", err),
+            };
 
+            return Ok(Response::new(reply));
+        }
+
+        let added_book = sql_query("SELECT * FROM books ORDER BY id DESC").load::<Book>(conn);
+        if let Err(err) = added_book {
+            let reply = AddBookResponse {
+                status: Status::Error.into(),
+                message: format!("Add book failed with error: {}", err),
+            };
+
+            return Ok(Response::new(reply));
+        }
+
+        let added_book = added_book.unwrap();
         let reply = AddBookResponse {
             status: Status::Ok.into(),
             message: format!("New book was added and it's id is {}", added_book[0].id),
@@ -52,22 +67,64 @@ impl PogLib for PogLibService {
     ) -> Result<Response<ListBooksPagesResponse>, tonic::Status> {
         let conn: &mut MysqlConnection = &mut connection();
 
-        let n_books = sql_query("SELECT * FROM books WHERE name = ?")
-            .bind::<Text, _>(&request.get_ref().name)
-            .execute(conn)
-            .unwrap() as i32;
+        let mut n_books;
+        let mut books;
 
+        if request.get_ref().name.is_empty() {
+            n_books = sql_query("SELECT * FROM books")
+                .bind::<Text, _>(&request.get_ref().name)
+                .execute(conn);
+        } else {
+            n_books = sql_query("SELECT * FROM books WHERE name = ?")
+                .bind::<Text, _>(&request.get_ref().name)
+                .execute(conn);
+        }
+
+        if let Err(err) = n_books {
+            let reply = ListBooksPagesResponse {
+                data: vec![],
+                page: request.get_ref().page,
+                status: Status::Error.into(),
+                total: 0,
+                pages: 0,
+                message: format!("List Books Failed with error: {}", err),
+            };
+
+            return Ok(Response::new(reply));
+        }
+
+        let n_books = n_books.unwrap() as i32;
         let offset = (request.get_ref().page - 1) * request.get_ref().per_page;
         let pages = n_books / request.get_ref().per_page;
 
-        let books =
-            sql_query("SELECT * FROM books WHERE name = ?  ORDER BY id DESC LIMIT ? OFFSET ?")
-                .bind::<Text, _>(&request.get_ref().name)
+        if request.get_ref().name.is_empty() {
+            books = sql_query("SELECT * FROM books ORDER BY id DESC LIMIT ? OFFSET ?")
                 .bind::<Integer, _>(request.get_ref().per_page)
                 .bind::<Integer, _>(offset)
-                .load::<Book>(conn)
-                .unwrap();
+                .load::<Book>(conn);
+        } else {
+            books =
+                sql_query("SELECT * FROM books WHERE name = ? ORDER BY id DESC LIMIT ? OFFSET ?")
+                    .bind::<Text, _>(&request.get_ref().name)
+                    .bind::<Integer, _>(request.get_ref().per_page)
+                    .bind::<Integer, _>(offset)
+                    .load::<Book>(conn);
+        }
 
+        if let Err(err) = books {
+            let reply = ListBooksPagesResponse {
+                data: vec![],
+                page: request.get_ref().page,
+                status: Status::Error.into(),
+                total: 0,
+                pages: 0,
+                message: format!("List Books Failed with error: {}", err),
+            };
+
+            return Ok(Response::new(reply));
+        }
+
+        let books = books.unwrap();
         let mut bs = vec![];
         for book in books {
             bs.push(payments::Book {
@@ -96,13 +153,43 @@ impl PogLib for PogLibService {
 
         let deleted_book = sql_query("SELECT * FROM books WHERE id = ?")
             .bind::<Integer, _>(&request.get_ref().id)
-            .load::<Book>(conn)
-            .unwrap();
+            .load::<Book>(conn);
+
+        if let Err(err) = deleted_book {
+            let reply = DeleteBookResponse {
+                status: Status::Error.into(),
+                message: format!("Delete book failed with error: {}", err),
+                book: None,
+            };
+
+            return Ok(Response::new(reply));
+        }
+
+        let deleted_book = deleted_book.unwrap();
+
+        if deleted_book.len() == 0 {
+            let reply = DeleteBookResponse {
+                status: Status::Error.into(),
+                message: format!("Book with id {} does not exists", request.get_ref().id),
+                book: None,
+            };
+
+            return Ok(Response::new(reply));
+        }
 
         let rows_affected = sql_query("DELETE FROM books WHERE id = ?")
             .bind::<Integer, _>(&request.get_ref().id)
-            .execute(conn)
-            .unwrap();
+            .execute(conn);
+
+        if let Err(err) = rows_affected {
+            let reply = DeleteBookResponse {
+                status: Status::Error.into(),
+                message: format!("Delete book failed with error: {}", err),
+                book: None,
+            };
+
+            return Ok(Response::new(reply));
+        }
 
         let reply = DeleteBookResponse {
             status: Status::Ok.into(),
@@ -122,22 +209,53 @@ impl PogLib for PogLibService {
     ) -> Result<Response<UpdateBookResponse>, tonic::Status> {
         let conn: &mut MysqlConnection = &mut connection();
 
-        let deleted_book = sql_query("SELECT * FROM books WHERE id = ?")
+        let updated_book = sql_query("SELECT * FROM books WHERE id = ?")
             .bind::<Integer, _>(&request.get_ref().id)
-            .load::<Book>(conn)
-            .unwrap();
+            .load::<Book>(conn);
+
+        if let Err(err) = updated_book {
+            let reply = UpdateBookResponse {
+                status: Status::Error.into(),
+                message: format!("Update book failed with error: {}", err),
+                book: None,
+            };
+
+            return Ok(Response::new(reply));
+        }
+
+        let updated_book = updated_book.unwrap();
+
+        if updated_book.len() == 0 {
+            let reply = UpdateBookResponse {
+                status: Status::Error.into(),
+                message: format!("Book with id {} does not exists", request.get_ref().id),
+                book: None,
+            };
+
+            return Ok(Response::new(reply));
+        }
 
         let rows_affected = sql_query("UPDATE books SET name = ? WHERE id = ?")
             .bind::<Text, _>(&request.get_ref().name)
             .bind::<Integer, _>(&request.get_ref().id)
-            .execute(conn)
-            .unwrap();
+            .execute(conn);
+
+        let rows_affected = rows_affected.unwrap();
+        if rows_affected == 0 {
+            let reply = UpdateBookResponse {
+                status: Status::Error.into(),
+                message: format!("Updated book failed"),
+                book: None,
+            };
+
+            return Ok(Response::new(reply));
+        }
 
         let reply = UpdateBookResponse {
             status: Status::Ok.into(),
-            message: format!("Updated book with id: {}", deleted_book[0].id),
+            message: format!("Updated book with id: {}", updated_book[0].id),
             book: Some(payments::Book {
-                id: deleted_book[0].id,
+                id: updated_book[0].id,
                 name: request.get_ref().name.to_string(),
             }),
         };

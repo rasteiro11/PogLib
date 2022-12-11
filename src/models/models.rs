@@ -1,4 +1,4 @@
-use crate::schema::books;
+use crate::{payments, schema::books};
 use diesel::prelude::*;
 
 #[derive(
