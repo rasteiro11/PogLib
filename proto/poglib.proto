@@ -6,6 +6,7 @@ service PogLib {
     rpc ListBooks(ListBooksPagesRequest) returns (ListBooksPagesResponse);
     rpc DeleteBookById(DeleteBookRequest) returns (DeleteBookResponse);
     rpc UpdateBookById(UpdateBookRequest) returns (UpdateBookResponse);
+    rpc GetBookById(GetBookRequest) returns (GetBookResponse);
 }
 
 enum Status {
@@ -21,6 +22,7 @@ message Book {
 
 message AddBookRequest {
   string name = 1;
+  string encoded_file = 2;
 }
 
 message  AddBookResponse {
@@ -64,4 +66,19 @@ message UpdateBookResponse {
   string message = 2;
   Book book = 3;
 }
+
+message GetBookRequest {
+  int32 id = 1;
+}
+
+message GetBookResponse {
+  Status status = 1;
+  string message = 2;
+  Book book = 3;
+  string encoded_file = 4;
+}
+
+
+
+
 

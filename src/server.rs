@@ -1,12 +1,18 @@
+#![feature(file_create_new)]
 use crate::models::models::Book;
 use diesel::sql_types::Integer;
+use diesel::sql_types::Text;
 use diesel::*;
-use diesel::{prelude::*, sql_types::Text};
 use payments::pog_lib_server::PogLib;
+use payments::GetBookRequest;
+use payments::GetBookResponse;
 use payments::{pog_lib_server::PogLibServer, AddBookRequest, AddBookResponse, Status};
 use payments::{DeleteBookRequest, ListBooksPagesRequest, UpdateBookRequest, UpdateBookResponse};
 use payments::{DeleteBookResponse, ListBooksPagesResponse};
-use std::{env, vec};
+use std::fs;
+use std::fs::File;
+use std::io::Write;
+use std::{env, thread, vec};
 use tonic::transport::Server;
 use tonic::{Request, Response};
 
@@ -28,6 +34,43 @@ impl PogLib for PogLibService {
         request: Request<AddBookRequest>,
     ) -> Result<Response<AddBookResponse>, tonic::Status> {
         let conn: &mut MysqlConnection = &mut connection();
+
+        let filename_exists = sql_query("SELECT * FROM books WHERE name = ?")
+            .bind::<Text, _>(&request.get_ref().name)
+            .execute(conn);
+
+        if let Err(err) = filename_exists {
+            let reply = AddBookResponse {
+                status: Status::Error.into(),
+                message: format!("Add book failed with error: {}", err),
+            };
+
+            return Ok(Response::new(reply));
+        }
+        let filename_exists = filename_exists.unwrap();
+        if filename_exists != 0 {
+            let reply = AddBookResponse {
+                status: Status::Error.into(),
+                message: format!("This book already exists"),
+            };
+
+            return Ok(Response::new(reply));
+        }
+
+        let encoded_file = request.get_ref().encoded_file.clone();
+        let filename = request.get_ref().name.clone();
+
+        thread::spawn(move || {
+            let decoded_file = base64::decode(encoded_file).expect("could not decode file");
+
+            let file = File::create(format!("./books_server/{}", filename));
+            match file {
+                Err(err) => eprintln!("File::create() returned error: {}", err),
+                Ok(mut file) => file
+                    .write_all(&decoded_file)
+                    .expect("Could not write to file"),
+            }
+        });
 
         let rows_affected = sql_query("INSERT INTO books (name) VALUES (?)")
             .bind::<Text, _>(&request.get_ref().name)
@@ -67,8 +110,8 @@ impl PogLib for PogLibService {
     ) -> Result<Response<ListBooksPagesResponse>, tonic::Status> {
         let conn: &mut MysqlConnection = &mut connection();
 
-        let mut n_books;
-        let mut books;
+        let n_books;
+        let books;
 
         if request.get_ref().name.is_empty() {
             n_books = sql_query("SELECT * FROM books")
@@ -258,6 +301,83 @@ impl PogLib for PogLibService {
                 id: updated_book[0].id,
                 name: request.get_ref().name.to_string(),
             }),
+        };
+
+        Ok(Response::new(reply))
+    }
+
+    async fn get_book_by_id(
+        &self,
+        request: Request<GetBookRequest>,
+    ) -> Result<Response<GetBookResponse>, tonic::Status> {
+        let conn: &mut MysqlConnection = &mut connection();
+
+        let filename_exists = sql_query("SELECT * FROM books WHERE id = ?")
+            .bind::<Integer, _>(&request.get_ref().id)
+            .execute(conn);
+
+        if let Err(err) = filename_exists {
+            let reply = GetBookResponse {
+                encoded_file: "".into(),
+                book: None,
+                status: Status::Error.into(),
+                message: format!("Get book failed with error: {}", err),
+            };
+
+            return Ok(Response::new(reply));
+        }
+        let filename_exists = filename_exists.unwrap();
+        if filename_exists == 0 {
+            let reply = GetBookResponse {
+                encoded_file: "".into(),
+                book: None,
+                status: Status::Error.into(),
+                message: format!("This book does not exists"),
+            };
+
+            return Ok(Response::new(reply));
+        }
+
+        let get_book = sql_query("SELECT * FROM books WHERE id = ?")
+            .bind::<Integer, _>(&request.get_ref().id)
+            .load::<Book>(conn);
+
+        if let Err(err) = get_book {
+            let reply = GetBookResponse {
+                encoded_file: "".into(),
+                book: None,
+                status: Status::Error.into(),
+                message: format!("Get book failed with error: {}", err),
+            };
+
+            return Ok(Response::new(reply));
+        }
+        let get_book = get_book.unwrap();
+
+        let blob = fs::read(format!(
+            "/home/titico03/Documents/RUST/PogLib/books_server/{}",
+            get_book[0].name,
+        ));
+        if let Err(err) = blob {
+            let reply = GetBookResponse {
+                encoded_file: "".into(),
+                book: None,
+                status: Status::Error.into(),
+                message: format!("Get book failed with error: {}", err),
+            };
+
+            return Ok(Response::new(reply));
+        }
+        let blob = blob.unwrap();
+        let encoded_file = base64::encode(blob);
+        let reply = GetBookResponse {
+            encoded_file,
+            book: Some(payments::Book {
+                id: get_book[0].id,
+                name: get_book[0].name.clone(),
+            }),
+            status: Status::Ok.into(),
+            message: format!("We got the book with id {}", get_book[0].id),
         };
 
         Ok(Response::new(reply))
