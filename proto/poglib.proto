@@ -3,12 +3,20 @@ package poglib;
 
 service PogLib {
     rpc AddBook(AddBookRequest) returns (AddBookResponse);
+    rpc ListBooks(ListBooksPagesRequest) returns (ListBooksPagesResponse);
+    rpc DeleteBookById(DeleteBookRequest) returns (DeleteBookResponse);
+    rpc UpdateBookById(UpdateBookRequest) returns (UpdateBookResponse);
 }
 
 enum Status {
   UNKNOWN_STATUS = 0;
   OK = 1;
   ERROR = 2;
+}
+
+message Book {
+  int32 id = 1;
+  string name = 2;
 }
 
 message AddBookRequest {
@@ -19,3 +27,41 @@ message  AddBookResponse {
     Status status = 1;
     string message = 2;
 }
+
+message ListBooksPagesRequest {
+   int32 id = 1;
+   string name = 2;
+   int32 per_page = 3;
+   int32 page = 4;
+}
+
+message  ListBooksPagesResponse {
+    Status status = 1;
+    string message = 2;
+    repeated Book data = 3;
+    int32 page = 4;
+    int32 pages = 5;
+    int32 total = 6;
+}
+
+message DeleteBookRequest {
+  int32 id = 1;
+}
+
+message DeleteBookResponse {
+  Status status = 1;
+  string message = 2;
+  Book book = 3;
+}
+
+message UpdateBookRequest {
+  int32 id = 1;
+  string name = 2;
+}
+
+message UpdateBookResponse {
+  Status status = 1;
+  string message = 2;
+  Book book = 3;
+}
+

@@ -52,6 +52,8 @@ impl PogLib for PogLibService {
     ) -> Result<Response<ListBooksPagesResponse>, tonic::Status> {
         let conn: &mut MysqlConnection = &mut connection();
 
+
+        if request.
         let n_books = sql_query("SELECT * FROM books WHERE name = ?")
             .bind::<Text, _>(&request.get_ref().name)
             .execute(conn)
