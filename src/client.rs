@@ -1,11 +1,12 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     fs::{self, File},
     io::{Read, Write},
 };
 
 extern crate base64;
 
+use futures::executor::block_on;
 use payments::{pog_lib_client::PogLibClient, GetBookRequest};
 use tonic::transport::Channel;
 
@@ -15,12 +16,12 @@ pub mod payments {
 }
 
 trait IRouter<'a> {
-    fn add_handler(&mut self, route: char, handler: &'a dyn Fn());
-    fn exec_route(&self, route: char);
+    fn add_handler(&mut self, route: char, handler: &'a dyn Fn(&mut PogLibClient<Channel>));
+    fn exec_route(&mut self, route: char);
 }
 
 struct Router<'a> {
-    routes: HashMap<char, &'a dyn Fn()>,
+    routes: HashMap<char, &'a dyn Fn(&mut PogLibClient<Channel>)>,
     client: PogLibClient<Channel>,
 }
 
@@ -34,13 +35,13 @@ impl<'a> Router<'a> {
 }
 
 impl<'a> IRouter<'a> for Router<'a> {
-    fn add_handler(&mut self, route: char, handler: &'a dyn Fn()) {
+    fn add_handler(&mut self, route: char, handler: &'a dyn Fn(&mut PogLibClient<Channel>)) {
         self.routes.insert(route, handler);
     }
-    fn exec_route(&self, route: char) {
+    fn exec_route(&mut self, route: char) {
         let f = self.routes.get(&route);
         if let Some(f) = f {
-            f()
+            f(&mut self.client)
         } else {
             println!("This route was not declared");
         }
@@ -48,8 +49,16 @@ impl<'a> IRouter<'a> for Router<'a> {
 }
 
 async fn get_book(client: &mut PogLibClient<Channel>) {
+    println!("Book Id: ");
+    let mut line = String::new();
+    std::io::stdin()
+        .read_line(&mut line)
+        .expect("Could not get input from user");
+
+    let index = line.trim().parse::<i32>().expect("Could not parse id");
+
     let response = client
-        .get_book_by_id(tonic::Request::new(GetBookRequest { id: 48 }))
+        .get_book_by_id(tonic::Request::new(GetBookRequest { id: index }))
         .await
         .expect("Could not get book");
 
@@ -79,7 +88,7 @@ async fn add_new_book(client: &mut PogLibClient<Channel>) {
 
     let request = tonic::Request::new(AddBookRequest {
         encoded_file,
-        name: "sample.png".into(),
+        name: line.into(),
     });
 
     let response = client
@@ -94,10 +103,15 @@ async fn add_new_book(client: &mut PogLibClient<Channel>) {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "http://0.0.0.0:42069";
     let mut client = PogLibClient::connect(addr).await?;
+    let mut client_2 = PogLibClient::connect(addr).await?;
 
-    //let mut router = Router::new(client);
-    // router.add_handler('l');
-    // router.add_handler('a', &test_router_2);
+    let mut router = Router::new(client_2);
+    router.add_handler('l', &|client: &mut PogLibClient<Channel>| {
+        block_on(get_book(client));
+    });
+    router.add_handler('a', &|client: &mut PogLibClient<Channel>| {
+        block_on(add_new_book(client));
+    });
 
     while true {
         let mut line = String::new();
@@ -107,17 +121,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let route = line.bytes().nth(0).expect("Something went wrong") as char;
 
-        match route {
-            'l' => get_book(&mut client).await,
-            _ => {
-                println!("FUCK YOU")
-            }
-        }
+        router.exec_route(route);
     }
-
-    // ADD NEW BOOK
-
-    // GET BOOK
 
     Ok(())
 }
