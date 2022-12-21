@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     fs::{self, File},
     io::{Read, Write},
+    path::Path,
 };
 
 extern crate base64;
@@ -10,7 +11,7 @@ use futures::executor::block_on;
 use payments::{pog_lib_client::PogLibClient, GetBookRequest};
 use tonic::transport::Channel;
 
-use crate::payments::{AddBookRequest, Status};
+use crate::payments::{AddBookRequest, ListBooksPagesRequest, Status};
 pub mod payments {
     tonic::include_proto!("poglib");
 }
@@ -70,9 +71,11 @@ async fn get_book(client: &mut PogLibClient<Channel>) {
     let file = File::create(format!("./books_client/{}", book_name));
     match file {
         Err(err) => eprintln!("File::create() returned error: {}", err),
-        Ok(mut file) => file
-            .write_all(&decoded_file)
-            .expect("Could not write to file"),
+        Ok(mut file) => {
+            file.write_all(&decoded_file)
+                .expect("Could not write to file");
+            println!("Everything is ok file downloaded");
+        }
     }
 }
 
@@ -85,14 +88,18 @@ async fn add_new_book(client: &mut PogLibClient<Channel>) {
 
     line = line.trim().to_string();
 
-    println!("LINE: {}", line);
-
     let blob = fs::read(line.as_str()).expect("READING FILE IS FUCKED");
     let encoded_file = base64::encode(blob);
 
+    let file_name = Path::new(&line)
+        .file_name()
+        .expect("Could not get file name")
+        .to_str()
+        .expect("Could not get str");
+
     let request = tonic::Request::new(AddBookRequest {
         encoded_file,
-        name: line.clone(),
+        name: file_name.to_string(),
     });
 
     let response = client
@@ -106,7 +113,41 @@ async fn add_new_book(client: &mut PogLibClient<Channel>) {
     if num_status == Status::Error || num_status == Status::UnknownStatus {
         println!("Something went wrong during book download, try again later");
     } else {
-        println!("Book with message {} ", response.message);
+        println!("Added new book");
+    }
+}
+
+async fn list_books(client: &mut PogLibClient<Channel>) {
+    print!("Search Book Name: ");
+    //let mut line = String::new();
+    //std::io::stdin()
+    //    .read_line(&mut line)
+    //    .expect("Could not get input from user");
+
+    //line = line.trim().to_string();
+
+    let request = tonic::Request::new(ListBooksPagesRequest {
+        id: 0,
+        name: "".to_string(),
+        per_page: 100,
+        page: 1,
+    });
+
+    let response = client
+        .list_books(request)
+        .await
+        .expect("Book could not be added by some reason")
+        .into_inner();
+
+    let num_status = Status::from_i32(response.status).expect("Expected valid status");
+
+    if num_status == Status::Error || num_status == Status::UnknownStatus {
+        println!("{}", response.message);
+        println!("Something went wrong during book download, try again later");
+    } else {
+        for book in response.data {
+            println!("{:?}", book);
+        }
     }
 }
 
@@ -121,6 +162,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
     router.add_handler('a', &|client: &mut PogLibClient<Channel>| {
         block_on(add_new_book(client));
+    });
+    router.add_handler('l', &|client: &mut PogLibClient<Channel>| {
+        block_on(list_books(client));
     });
 
     while true {
