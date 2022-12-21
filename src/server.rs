@@ -354,10 +354,7 @@ impl PogLib for PogLibService {
         }
         let get_book = get_book.unwrap();
 
-        let blob = fs::read(format!(
-            "/home/titico03/Documents/RUST/PogLib/books_server/{}",
-            get_book[0].name,
-        ));
+        let blob = fs::read(format!("./books_server/{}", get_book[0].name,));
         if let Err(err) = blob {
             let reply = GetBookResponse {
                 encoded_file: "".into(),
